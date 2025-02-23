@@ -1,0 +1,39 @@
+{
+  "chain": [
+    {
+      "index": 0,
+      "timestamp": 1739486191,
+      "transactions": [],
+      "contracts": [],
+      "previous_hash": "0",
+      "hash": "a062f5147d30c6838f1105baa0929d0154fc74c61f875584ddf505d744fd5c81"
+    }
+  ],
+  "stakers": {
+    "Endereço2": 200,
+    "Endereço3": 300,
+    "Endereço1": 100
+  },
+  "tokens": {
+    "0": {
+      "id": 0,
+      "name": "Quantum Secure Token",
+      "symbol": "QST",
+      "total_supply": 1000000,
+      "balances": {
+        "system": 1000000
+      },
+      "creator": "system",
+      "quantum_crypto": {
+        "signature_scheme": "Dilithium2",
+        "public_key": "",
+        "signature": ""
+      }
+    }
+  },
+  "next_token_id": 1,
+  "nonces": {},
+  "pending_transactions": [],
+  "blocks": [],
+  "transactions": []
+}
