@@ -2,6 +2,8 @@
 use serde::{Deserialize, Serialize};
 use pqcrypto_traits::sign::{PublicKey, SecretKey, DetachedSignature};
 use pqcrypto_dilithium::dilithium5::{self, detached_sign, verify_detached_signature};
+use crate::error::Error;
+use crate::transaction::Transaction;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CustomToken {
@@ -15,6 +17,7 @@ pub struct CustomToken {
     public_key: Option<Vec<u8>>,
     #[serde(skip)]
     secret_key: Option<Vec<u8>>,
+    processed_transactions: std::collections::HashSet<String>,
 }
 
 impl CustomToken {
@@ -27,15 +30,16 @@ impl CustomToken {
         let (public_key, secret_key) = Self::generate_keys()?;
 
         Ok(Self {
-            id,
-            name,
-            symbol,
-            supply,
-            owner,
-            signature: Vec::new(),
-            public_key: Some(public_key),
-            secret_key: Some(secret_key),
-        })
+    id,
+    name,
+    symbol,
+    supply,
+    owner,
+    signature: Vec::new(),
+    public_key: Some(public_key),
+    secret_key: Some(secret_key),
+    processed_transactions: std::collections::HashSet::new(),
+})
     }
 
      fn generate_keys() -> Result<(Vec<u8>, Vec<u8>)> {
@@ -89,6 +93,15 @@ impl CustomToken {
             data.as_bytes(),
             &pk,
         ).is_ok())
+    }
+
+    pub fn process_transfer(&mut self, tx: &Transaction) -> Result<(), Error> {
+        if self.processed_transactions.contains(&tx.hash) {
+            return Err(Error::DoubleSpending);
+        }
+
+        self.transfer(tx.from.clone(), tx.amount)?;
+        Ok(())
     }
 
     pub fn export_public_key(&self) -> Result<Vec<u8>> {

@@ -1,15 +1,27 @@
-﻿use pqcrypto_dilithium::dilithium5::{SecretKey, PublicKey, detached_sign};
-use pqcrypto_traits::sign::{PublicKey as TraitsPublicKey, DetachedSignature as PqcDetachedSignature};
+﻿
+
+//secure_transaction.rs
+/*
+use pqcrypto_dilithium::dilithium5::{ detached_sign, SecretKey, PublicKey};
+
 use sodiumoxide::crypto::secretbox;
-use crate::error::TransactionError;
+use crate::transaction::TransactionError;
 use serde::{Serialize, Deserialize};
 use secrecy::Zeroize;
+use std::collections::HashSet;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use crate::error::Error;
 use pqcrypto_dilithium::dilithium5;
 
 
+static USED_NONCES: Lazy<Mutex<HashSet<Vec<u8>>>> = Lazy::new(|| {
+    Mutex::new(HashSet::new())
+});
+
 const MAX_SIGNATURE_SIZE: usize = 4627; // Tamanho da assinatura Dilithium5
 
-#[derive(Debug, Serialize, Deserialize, Clone, Zeroize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SecureTransaction {
     pub from: String,
     pub to: String,
@@ -20,10 +32,11 @@ pub struct SecureTransaction {
     pub public_key: Vec<u8>,
     pub cipher_key: Vec<u8>,
     pub encrypted_data: Vec<u8>,
-    pub iv: Vec<u8>,
-    pub salt: Vec<u8>,
-    pub mac: Vec<u8>,
+    pub iv: Vec<u8>,          // Vetor de inicialização para criptografia
+    pub salt: Vec<u8>,        // Salt para derivação de chave
+    pub mac: Vec<u8>,         // Código de Autenticação de Mensagem (MAC)
 }
+
 
 impl SecureTransaction {
     pub fn new(
@@ -32,8 +45,8 @@ impl SecureTransaction {
         amount: u64,
         timestamp: i64,
         nonce: u64,
-        secret_key: &SecretKey,
-        public_key: &PublicKey,
+        secret_key: &SecretKey, // Recebe a chave secreta para assinar a transação
+        public_key: &PublicKey, // Recebe a chave pública para armazenar na transação
     ) -> Result<Self, TransactionError> {
         // Gera salt e IV aleatórios
         let salt = secretbox::gen_nonce().0.to_vec();
@@ -72,6 +85,11 @@ impl SecureTransaction {
         Ok(transaction)
     }
 
+    pub fn size(&self) -> usize {
+        self.from.len() + self.to.len() + 8 + 8 + 8 + self.signature.len() + self.public_key.len()
+        // +8 para amount, timestamp e nonce
+    }
+
     pub fn verify(&self, public_key: &PublicKey, signature: &[u8]) -> Result<bool, TransactionError> {
     let mac_valid = self.verify_mac()?;
     let data_valid = self.decrypt_data().is_ok();
@@ -89,10 +107,37 @@ impl SecureTransaction {
         Err(TransactionError::InvalidSignature("Verificação falhou".to_string()))
     }
 }
+        
 
-    pub fn size(&self) -> usize {
-        self.from.len() + self.to.len() + 8 + 8 + 8 + self.signature.len() + self.public_key.len()
-        // +8 para amount, timestamp e nonce
+    pub fn verify_nonce(&self, nonce: &[u8]) -> Result<(), Error> {
+        let mut nonces = USED_NONCES.lock()
+            .map_err(|_| Error::LockError)?;
+        
+        if nonces.contains(nonce) {
+            return Err(Error::NonceReused);
+        }
+        
+        nonces.insert(nonce.to_vec());
+        Ok(())
+    }
+
+    pub fn validate_with_decryption(&self) -> Result<bool, TransactionError> {
+        // Primeiro verifica o MAC para garantir integridade
+        if !self.verify_mac()? {
+            return Ok(false);
+        }
+        
+        // Depois decifra os dados para verificações adicionais
+        let decrypted_data = self.decrypt_data()?;
+        
+        // Verifica se os dados decifrados correspondem aos dados originais
+        let original_data = self.serialize_data()?;
+        
+        if decrypted_data != original_data {
+            return Ok(false);
+        }
+        
+        Ok(true)
     }
 
     fn encrypt_data(&mut self, _secret_key: &SecretKey) -> Result<(), TransactionError> {
@@ -126,6 +171,16 @@ impl SecureTransaction {
             .map_err(|_| TransactionError::InvalidData("Decryption failed".to_string()))
     }
 
+    fn generate_mac(&mut self, data: &[u8]) -> Result<(), TransactionError> {
+        let key = secretbox::Key::from_slice(&self.cipher_key)
+            .ok_or(TransactionError::InvalidData("Invalid key".to_string()))?;
+
+        self.mac = secretbox::seal(data, &secretbox::Nonce::from_slice(&self.iv)
+            .ok_or(TransactionError::InvalidData("Invalid nonce".to_string()))?, &key);
+
+        Ok(())
+    }
+
     fn verify_mac(&self) -> Result<bool, TransactionError> {
         let key = secretbox::Key::from_slice(&self.cipher_key)
             .ok_or(TransactionError::InvalidData("Invalid key".to_string()))?;
@@ -156,14 +211,14 @@ impl SecureTransaction {
 
         Ok(data.into_bytes())
     }
+}
 
-    fn generate_mac(&mut self, data: &[u8]) -> Result<(), TransactionError> {
-        let key = secretbox::Key::from_slice(&self.cipher_key)
-            .ok_or(TransactionError::InvalidData("Invalid key".to_string()))?;
-
-        self.mac = secretbox::seal(data, &secretbox::Nonce::from_slice(&self.iv)
-            .ok_or(TransactionError::InvalidData("Invalid nonce".to_string()))?, &key);
-
-        Ok(())
+// Limpeza segura de dados sensíveis
+impl Drop for SecureTransaction {
+    fn drop(&mut self) {
+        self.cipher_key.zeroize();
+        self.signature.zeroize();
+        self.encrypted_data.zeroize();
+        self.mac.zeroize();
     }
 }

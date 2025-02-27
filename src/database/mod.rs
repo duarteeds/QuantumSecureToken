@@ -52,6 +52,19 @@ impl Database {
             [],
         ).context("Falha ao criar tabela tokens")?;
 
+         info!("Criando tabela fee_distributions...");
+    self.conn.execute(
+        "CREATE TABLE IF NOT EXISTS fee_distributions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            burn_amount INTEGER NOT NULL,
+            staking_amount INTEGER NOT NULL,
+            dev_amount INTEGER NOT NULL,
+            liquidity_amount INTEGER NOT NULL
+        )",
+        [],
+    ).context("Falha ao criar tabela fee_distributions")?;
+
         info!("Criando tabela transfers...");
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS transfers (

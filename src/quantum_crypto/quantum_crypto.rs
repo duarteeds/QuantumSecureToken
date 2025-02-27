@@ -12,6 +12,10 @@ use serde::de::Deserializer;
 use pqcrypto_dilithium::dilithium5;
 use pqcrypto_traits::sign::{PublicKey, SecretKey, DetachedSignature};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use std::thread;
+use rand::Rng;
+use crate::error::Error;
 
 
 const DILITHIUM_SIGNATURE_SIZE: usize = 4627;
@@ -217,6 +221,32 @@ impl QuantumCrypto {
     if let Ok(mut logs) = self.logs_seguros.lock() {
         logs.push(log_entry);
     }
+}
+
+pub fn verify_signature(&self, data: &[u8]) -> Result<bool, Error> {
+    let start = Instant::now();
+    
+    // Obtenha a assinatura e chave pública do estado atual
+    let signature_bytes = STANDARD.decode(self.data.signature.clone())
+    .map_err(|_| Error::InvalidSignature)?;
+let public_key_bytes = STANDARD.decode(self.data.public_key.clone())
+    .map_err(|_| Error::InvalidPublicKey)?;
+    
+    // Use a função verify com os dados corretos
+    let result = match self.verify(data, &signature_bytes, &public_key_bytes) {
+        Ok(_) => true,
+        Err(_) => false,
+    };
+    
+    let elapsed = start.elapsed();
+    
+    // Adicionar delay aleatório para mitigar timing attacks
+    if elapsed < Duration::from_millis(100) {
+        let mut rng = rand::thread_rng();
+        thread::sleep(Duration::from_millis(rng.gen_range(0..100)));
+    }
+    
+    Ok(result)
 }
 
 fn validar_estado_interno(&self) -> Result<(), OqsError> {

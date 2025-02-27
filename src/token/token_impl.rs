@@ -9,6 +9,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use crate::quantum_crypto::quantum_crypto::Permission;
 use crate::quantum_crypto::OqsError;
 
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Token {
     pub id: u64,
@@ -57,6 +58,25 @@ impl Token {
 
     pub fn balance_of(&self, address: &String) -> u64 {
         self.balances.get(address).copied().unwrap_or(0)
+    }
+
+    pub fn transfer(&mut self, to: &str, amount: u64) -> Result<(), crate::error::Error> {
+        if amount == 0 {
+            return Err(crate::error::Error::InvalidAmount);
+        }
+
+        let current_balance = self.balances.get(&self.creator).copied().unwrap_or(0);
+        let new_balance = current_balance.checked_sub(amount)
+            .ok_or(crate::error::Error::InvalidAmount)?;
+
+        let recipient_balance = self.balances.get(to).copied().unwrap_or(0)
+            .checked_add(amount)
+            .ok_or(crate::error::Error::InvalidAmount)?;
+
+        self.balances.insert(self.creator.clone(), new_balance);
+        self.balances.insert(to.to_string(), recipient_balance);
+
+        Ok(())
     }
 
     pub fn mint(&mut self, address: String, amount: u64) -> Result<(), String> {
