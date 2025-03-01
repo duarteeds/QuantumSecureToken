@@ -1,4 +1,4 @@
-﻿// Constantes de segurança centralizadas
+// Constantes de segurança centralizadas
 pub const MAX_TRANSACTION_SIZE: usize = 128 * 1024; // 128KB
 pub const MAX_SIGNATURE_SIZE: usize = 4627; // Tamanho da assinatura Dilithium5
 pub const MAX_TIME_DRIFT: i64 = 300; // 5 minutos
@@ -29,4 +29,4 @@ pub const LIQUIDITY_PERCENTAGE: u64 = 10;
 
 // Taxa de transferência (percentual do valor, dividido por este número)
 pub const TRANSFER_FEE_DIVISOR: u64 = 1000; // 0.1%
-pub const TRANSFER_FEE_MINIMUM: u64 = 1;    // Mínimo de 1 KYBL
+pub const TRANSFER_FEE_MINIMUM: u64 = 1; // Mínimo de 1 KYBL

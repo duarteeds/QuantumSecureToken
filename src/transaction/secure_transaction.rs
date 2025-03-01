@@ -1,11 +1,12 @@
-﻿use pqcrypto_dilithium::dilithium5::{SecretKey, PublicKey, detached_sign};
-use pqcrypto_traits::sign::{PublicKey as TraitsPublicKey, DetachedSignature as PqcDetachedSignature};
-use sodiumoxide::crypto::secretbox;
 use crate::error::TransactionError;
-use serde::{Serialize, Deserialize};
-use secrecy::Zeroize;
 use pqcrypto_dilithium::dilithium5;
-
+use pqcrypto_dilithium::dilithium5::{detached_sign, PublicKey, SecretKey};
+use pqcrypto_traits::sign::{
+    DetachedSignature as PqcDetachedSignature, PublicKey as TraitsPublicKey,
+};
+use secrecy::Zeroize;
+use serde::{Deserialize, Serialize};
+use sodiumoxide::crypto::secretbox;
 
 const MAX_SIGNATURE_SIZE: usize = 4627; // Tamanho da assinatura Dilithium5
 
@@ -66,29 +67,39 @@ impl SecureTransaction {
 
         // Verifica se o tamanho da assinatura não excede o máximo permitido
         if transaction.signature.len() > MAX_SIGNATURE_SIZE {
-            return Err(TransactionError::InvalidSignature("Assinatura excede o tamanho máximo permitido".to_string()));
+            return Err(TransactionError::InvalidSignature(
+                "Assinatura excede o tamanho máximo permitido".to_string(),
+            ));
         }
 
         Ok(transaction)
     }
 
-    pub fn verify(&self, public_key: &PublicKey, signature: &[u8]) -> Result<bool, TransactionError> {
-    let mac_valid = self.verify_mac()?;
-    let data_valid = self.decrypt_data().is_ok();
-    let sig_valid = dilithium5::verify_detached_signature(
-        &dilithium5::DetachedSignature::from_bytes(signature)
-            .map_err(|_| TransactionError::InvalidSignature("Assinatura inválida".to_string()))?,
-        &self.serialize_data()?,
-        public_key
-    ).is_ok();
-    
-    // Executa todas as verificações mesmo quando falha para prevenir timing attacks
-    if mac_valid && data_valid && sig_valid {
-        Ok(true)
-    } else {
-        Err(TransactionError::InvalidSignature("Verificação falhou".to_string()))
+    pub fn verify(
+        &self,
+        public_key: &PublicKey,
+        signature: &[u8],
+    ) -> Result<bool, TransactionError> {
+        let mac_valid = self.verify_mac()?;
+        let data_valid = self.decrypt_data().is_ok();
+        let sig_valid = dilithium5::verify_detached_signature(
+            &dilithium5::DetachedSignature::from_bytes(signature).map_err(|_| {
+                TransactionError::InvalidSignature("Assinatura inválida".to_string())
+            })?,
+            &self.serialize_data()?,
+            public_key,
+        )
+        .is_ok();
+
+        // Executa todas as verificações mesmo quando falha para prevenir timing attacks
+        if mac_valid && data_valid && sig_valid {
+            Ok(true)
+        } else {
+            Err(TransactionError::InvalidSignature(
+                "Verificação falhou".to_string(),
+            ))
+        }
     }
-}
 
     pub fn size(&self) -> usize {
         self.from.len() + self.to.len() + 8 + 8 + 8 + self.signature.len() + self.public_key.len()
@@ -146,12 +157,9 @@ impl SecureTransaction {
     }
 
     fn serialize_data(&self) -> Result<Vec<u8>, TransactionError> {
-        let data = format!("{}:{}:{}:{}:{}",
-            self.from,
-            self.to,
-            self.amount,
-            self.timestamp,
-            self.nonce
+        let data = format!(
+            "{}:{}:{}:{}:{}",
+            self.from, self.to, self.amount, self.timestamp, self.nonce
         );
 
         Ok(data.into_bytes())
@@ -161,8 +169,12 @@ impl SecureTransaction {
         let key = secretbox::Key::from_slice(&self.cipher_key)
             .ok_or(TransactionError::InvalidData("Invalid key".to_string()))?;
 
-        self.mac = secretbox::seal(data, &secretbox::Nonce::from_slice(&self.iv)
-            .ok_or(TransactionError::InvalidData("Invalid nonce".to_string()))?, &key);
+        self.mac = secretbox::seal(
+            data,
+            &secretbox::Nonce::from_slice(&self.iv)
+                .ok_or(TransactionError::InvalidData("Invalid nonce".to_string()))?,
+            &key,
+        );
 
         Ok(())
     }

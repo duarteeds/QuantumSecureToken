@@ -1,20 +1,20 @@
-﻿use serde::{Serialize, Deserialize};
+use crate::constants::MAX_SIGNATURE_SIZE;
+use crate::constants::{HASH_SALT, MAX_ADDRESS_LENGTH, MIN_ADDRESS_LENGTH, TIMESTAMP_WINDOW};
+use crate::constants::{MAX_AMOUNT, MIN_AMOUNT};
+use crate::error::TransactionError;
+use crate::transaction::secure_transaction::SecureTransaction;
+use bincode::serialize;
+use once_cell::sync::Lazy;
+use pqcrypto_dilithium::dilithium5::verify_detached_signature;
+use pqcrypto_dilithium::dilithium5::{keypair, sign, PublicKey, SecretKey};
+use pqcrypto_traits::sign::DetachedSignature as PqcDetachedSignature;
+use pqcrypto_traits::sign::SignedMessage;
 use regex::Regex;
-use zeroize::Zeroize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use crate::error::TransactionError;
-use pqcrypto_dilithium::dilithium5::{PublicKey, SecretKey, keypair, sign};
-use once_cell::sync::Lazy;
-use bincode::serialize;
-use crate::constants::{MIN_ADDRESS_LENGTH, MAX_ADDRESS_LENGTH, TIMESTAMP_WINDOW, HASH_SALT};
-use pqcrypto_traits::sign::SignedMessage;
-use crate::transaction::secure_transaction::SecureTransaction;
-use crate::constants::MAX_SIGNATURE_SIZE;
-use pqcrypto_dilithium::dilithium5::verify_detached_signature;
-use pqcrypto_traits::sign::DetachedSignature as PqcDetachedSignature;
-use crate::constants::{MIN_AMOUNT, MAX_AMOUNT};
 use tracing::warn;
+use zeroize::Zeroize;
 
 #[derive(Debug, Serialize, Deserialize, Zeroize, Clone)]
 pub struct Transaction {
@@ -69,29 +69,33 @@ impl NonceRegistry {
     pub fn validate_nonce(&mut self, address: &str, nonce: u64) -> Result<(), TransactionError> {
         let registry = self.registry.get_mut().unwrap();
         let last_nonce = registry.get(address).copied().unwrap_or(0);
-        
+
         // Verificar se o nonce está dentro da gap permitida
         if nonce > last_nonce + self.max_nonce_gap {
-            return Err(TransactionError::InvalidData("Nonce gap excedida".to_string()));
+            return Err(TransactionError::InvalidData(
+                "Nonce gap excedida".to_string(),
+            ));
         }
-        
+
         if nonce <= last_nonce {
             return Err(TransactionError::NonceOverflow);
         }
-        
+
         // Verificar o intervalo mínimo de atualização
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| TransactionError::TimestampInvalid)?
             .as_secs() as i64;
-        
+
         let mut last_update_map = self.last_update.lock().unwrap();
         if let Some(last_time) = last_update_map.get(address) {
             if now - last_time < self.min_update_interval {
-                return Err(TransactionError::InvalidData("Intervalo de atualização muito pequeno".to_string()));
+                return Err(TransactionError::InvalidData(
+                    "Intervalo de atualização muito pequeno".to_string(),
+                ));
             }
         }
-        
+
         registry.insert(address.to_string(), nonce);
         last_update_map.insert(address.to_string(), now);
         Ok(())
@@ -99,9 +103,17 @@ impl NonceRegistry {
 }
 
 impl Transaction {
-    pub fn new(from: String, to: String, amount: u64, public_key: Vec<u8>) -> Result<Self, TransactionError> {
-        if from.len() < MIN_ADDRESS_LENGTH || from.len() > MAX_ADDRESS_LENGTH ||
-           to.len() < MIN_ADDRESS_LENGTH || to.len() > MAX_ADDRESS_LENGTH {
+    pub fn new(
+        from: String,
+        to: String,
+        amount: u64,
+        public_key: Vec<u8>,
+    ) -> Result<Self, TransactionError> {
+        if from.len() < MIN_ADDRESS_LENGTH
+            || from.len() > MAX_ADDRESS_LENGTH
+            || to.len() < MIN_ADDRESS_LENGTH
+            || to.len() > MAX_ADDRESS_LENGTH
+        {
             return Err(TransactionError::AddressFormatInvalid);
         }
 
@@ -128,39 +140,45 @@ impl Transaction {
     }
 
     pub fn validate(&self, nonce_registry: &mut NonceRegistry) -> Result<(), TransactionError> {
-    use crate::constants::{MAX_TRANSACTION_SIZE, MAX_SIGNATURE_SIZE}; // Remova TIMESTAMP_WINDOW daqui
-    
-    if self.amount < MIN_AMOUNT || self.amount > MAX_AMOUNT {
-        return Err(TransactionError::InvalidData("Valor de transação inválido".to_string()));
-    }
+        use crate::constants::{MAX_SIGNATURE_SIZE, MAX_TRANSACTION_SIZE}; // Remova TIMESTAMP_WINDOW daqui
 
-    self.validate_address()?;
-    
-    // Validação de timestamp
-    self.validate_timestamp()?;
-    
-    // Validação de tamanho de assinatura
-    if self.signature.len() > MAX_SIGNATURE_SIZE {
-        return Err(TransactionError::SignatureSizeExceeded);
-    }
-    
-    // Validação de nonce
-    nonce_registry.validate_nonce(&self.from, self.nonce)?;
+        if self.amount < MIN_AMOUNT || self.amount > MAX_AMOUNT {
+            return Err(TransactionError::InvalidData(
+                "Valor de transação inválido".to_string(),
+            ));
+        }
 
-    // Verificação de tamanho total da transação
-    if serialize(self).map_err(|_| TransactionError::InvalidDataFormat)?.len() > MAX_TRANSACTION_SIZE {
-        return Err(TransactionError::DataSizeExceeded);
-    }
+        self.validate_address()?;
 
-    Ok(())
-}
+        // Validação de timestamp
+        self.validate_timestamp()?;
+
+        // Validação de tamanho de assinatura
+        if self.signature.len() > MAX_SIGNATURE_SIZE {
+            return Err(TransactionError::SignatureSizeExceeded);
+        }
+
+        // Validação de nonce
+        nonce_registry.validate_nonce(&self.from, self.nonce)?;
+
+        // Verificação de tamanho total da transação
+        if serialize(self)
+            .map_err(|_| TransactionError::InvalidDataFormat)?
+            .len()
+            > MAX_TRANSACTION_SIZE
+        {
+            return Err(TransactionError::DataSizeExceeded);
+        }
+
+        Ok(())
+    }
 
     pub fn validate_address(&self) -> Result<(), TransactionError> {
         let re = Regex::new(&format!(
             "^[a-zA-Z0-9]{{{},{}}}$",
-            MIN_ADDRESS_LENGTH,
-            MAX_ADDRESS_LENGTH
-        )).map_err(|_| TransactionError::AddressFormatInvalid)?;
+            MIN_ADDRESS_LENGTH, MAX_ADDRESS_LENGTH
+        ))
+        .map_err(|_| TransactionError::AddressFormatInvalid)?;
 
         if !re.is_match(&self.from) || !re.is_match(&self.to) {
             return Err(TransactionError::AddressFormatInvalid);
@@ -175,15 +193,19 @@ impl Transaction {
 
     pub fn validate_input(&self, input: &[u8]) -> Result<(), TransactionError> {
         const MAX_INPUT_SIZE: usize = 1024 * 1024; // 1MB
-        
+
         if input.len() > MAX_INPUT_SIZE {
-            return Err(TransactionError::InvalidInput("Input excede tamanho máximo".into()));
+            return Err(TransactionError::InvalidInput(
+                "Input excede tamanho máximo".into(),
+            ));
         }
-        
+
         if !input.iter().all(|&byte| byte.is_ascii()) {
-            return Err(TransactionError::InvalidFormat("Input contém caracteres inválidos".into()));
+            return Err(TransactionError::InvalidFormat(
+                "Input contém caracteres inválidos".into(),
+            ));
         }
-        
+
         Ok(())
     }
 
@@ -204,18 +226,21 @@ impl Transaction {
 
     pub fn verify(&self, public_key: &PublicKey) -> Result<(), TransactionError> {
         let data = self.serialize_for_signing()?;
-        
+
         // Validate signature size before attempting conversion
         if self.signature.len() > MAX_SIGNATURE_SIZE {
             return Err(TransactionError::SignatureSizeExceeded);
         }
-        
-        let signature = pqcrypto_dilithium::dilithium5::DetachedSignature::from_bytes(&self.signature)
-            .map_err(|_| TransactionError::InvalidSignatures("Invalid signature".to_string()))?;
-            
+
+        let signature =
+            pqcrypto_dilithium::dilithium5::DetachedSignature::from_bytes(&self.signature)
+                .map_err(|_| {
+                    TransactionError::InvalidSignatures("Invalid signature".to_string())
+                })?;
+
         verify_detached_signature(&signature, &data, public_key)
             .map_err(|_| TransactionError::InvalidSignatures("Invalid signature".to_string()))?;
-            
+
         Ok(())
     }
 

@@ -1,17 +1,17 @@
-﻿use serde::{Serialize, Deserialize};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::collections::HashSet;
-use sha3::{Digest, Sha3_256};
-use subtle::ConstantTimeEq;
 use crate::error::Error;
 use crate::smart_contract::SmartContract;
-use pqcrypto_dilithium::dilithium5;
 use crate::transaction::SecureTransaction;
+use pqcrypto_dilithium::dilithium5;
+use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
+use std::collections::HashSet;
+use std::time::{SystemTime, UNIX_EPOCH};
+use subtle::ConstantTimeEq;
 
 // Constantes
 pub const MAX_BLOCK_SIZE: usize = 1024 * 1024; // 1MB
-pub const MAX_FUTURE_TIME_DRIFT: u64 = 3600;   // 1 hora
-pub const MAX_PAST_TIME_DRIFT: u64 = 7200;     // 2 horas
+pub const MAX_FUTURE_TIME_DRIFT: u64 = 3600; // 1 hora
+pub const MAX_PAST_TIME_DRIFT: u64 = 7200; // 2 horas
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Block {
@@ -38,13 +38,8 @@ impl Block {
             .unwrap()
             .as_secs();
 
-        let hash = Self::calculate_hash(
-            index,
-            timestamp,
-            &transactions,
-            &contracts,
-            &previous_hash,
-        )?;
+        let hash =
+            Self::calculate_hash(index, timestamp, &transactions, &contracts, &previous_hash)?;
 
         Ok(Block {
             index,
@@ -104,10 +99,12 @@ impl Block {
             return Err(Error::InvalidPreviousHash);
         }
 
-        self.verify_timestamp(SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| Error::InvalidTimestamp("Falha ao obter o tempo atual".to_string()))?
-            .as_secs() as i64)?;
+        self.verify_timestamp(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|_| Error::InvalidTimestamp("Falha ao obter o tempo atual".to_string()))?
+                .as_secs() as i64,
+        )?;
 
         for tx in &self.transactions {
             tx.verify(public_key, &tx.signature)?;

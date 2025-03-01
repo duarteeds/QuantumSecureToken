@@ -1,5 +1,5 @@
-﻿use anyhow::Result;
 use super::Token;
+use anyhow::Result;
 
 pub struct TokenBuilder {
     name: Option<String>,
@@ -39,16 +39,20 @@ impl TokenBuilder {
     }
 
     pub fn build(self) -> Result<Token> {
-        let name = self.name
+        let name = self
+            .name
             .ok_or_else(|| anyhow::anyhow!("Nome não definido"))?;
-            
-        let symbol = self.symbol
+
+        let symbol = self
+            .symbol
             .ok_or_else(|| anyhow::anyhow!("Símbolo não definido"))?;
-            
-        let total_supply = self.total_supply
+
+        let total_supply = self
+            .total_supply
             .ok_or_else(|| anyhow::anyhow!("Fornecimento total não definido"))?;
-            
-        let creator = self.creator
+
+        let creator = self
+            .creator
             .ok_or_else(|| anyhow::anyhow!("Criador não definido"))?;
 
         Ok(Token::new(name, symbol, total_supply, creator)?)

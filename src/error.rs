@@ -1,8 +1,6 @@
-﻿use std::time::SystemTimeError;
 use bincode::ErrorKind;
 use serde_json::Error as SerdeError;
-
-
+use std::time::SystemTimeError;
 
 #[derive(Debug)]
 pub enum Error {
@@ -126,8 +124,6 @@ impl std::fmt::Display for TransactionError {
             TransactionError::LockError => write!(f, "Erro de bloqueio"),
             TransactionError::NonceReused => write!(f, "Nonce reutilizado"),
             TransactionError::InvalidSignatures(e) => write!(f, "Assinaturas inválidas: {}", e),
-
-     
         }
     }
 }

@@ -1,5 +1,5 @@
-﻿use pqcrypto_dilithium::dilithium5::{SecretKey, PublicKey, sign};
 use crate::error::TransactionError;
+use pqcrypto_dilithium::dilithium5::{sign, PublicKey, SecretKey};
 use pqcrypto_traits::sign::SignedMessage;
 
 pub struct TransactionSigner;

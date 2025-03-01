@@ -1,4 +1,4 @@
-﻿mod block;
+mod block;
 mod blockchain;
 mod validacao;
 
